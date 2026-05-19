@@ -98,7 +98,7 @@ function fmtN(n: number | undefined): string {
   return String(n);
 }
 
-function loadStaticCatalog(): Record<string, { contextWindow?: number }> | null {
+async function loadStaticCatalog(): Promise<Record<string, { contextWindow?: number }> | null> {
   const candidates = [
     "/usr/local/lib/node_modules/@earendil-works/pi-coding-agent/node_modules/@earendil-works/pi-ai/dist/models.generated.js",
     "/usr/local/lib/node_modules/@earendil-works/pi-ai/dist/models.generated.js",
@@ -107,6 +107,8 @@ function loadStaticCatalog(): Record<string, { contextWindow?: number }> | null 
   ];
   for (const c of candidates) {
     if (fs.existsSync(c)) {
+      const { createRequire } = await import("module");
+      const require = createRequire(import.meta.url);
       const m = require(c);
       return m.MODELS && m.MODELS["github-copilot"] ? m.MODELS["github-copilot"] : null;
     }
@@ -169,7 +171,7 @@ function summarize(model: LiveModel): ModelSummary {
   }
 
   // Diff against static catalog
-  const staticCatalog = loadStaticCatalog();
+  const staticCatalog = await loadStaticCatalog();
   if (!staticCatalog) {
     console.log("\n(could not load pi's static catalog — skipping diff)");
     return;
