@@ -1,6 +1,6 @@
 ---
 name: copilot-hidden-models
-description: Enumerate the live GitHub Copilot /models endpoint and add models that pi's static catalog doesn't expose (1M-context Opus, internal previews, newer Gemini, larger context windows) to ~/.pi/agent/models.json. Also patches pi's model picker to show context window and thinking levels per row. Use when the user asks what models are actually available on Copilot, mentions hidden/internal/preview Copilot models, wants 1M context on Copilot, asks why a model isn't in /model, wants to diff live vs static Copilot catalog, or after running `pi update --self` (re-apply the picker patch).
+description: Enumerate the live GitHub Copilot /models endpoint and add models that pi's static catalog doesn't expose (1M-context Opus, internal previews, newer Gemini, larger context windows) to ~/.pi/agent/models.json. Use when the user asks what models are actually available on Copilot, mentions hidden/internal/preview Copilot models, wants 1M context on Copilot, asks why a model isn't in /model, or wants to diff live vs static Copilot catalog.
 ---
 
 # Copilot Hidden Models
@@ -12,7 +12,7 @@ Pi ships a static catalog of GitHub Copilot models in `@earendil-works/pi-ai/dis
 Run the enumeration script:
 
 ```bash
-python scripts/enumerate.py
+node --experimental-strip-types scripts/enumerate.ts
 ```
 
 It reads `~/.pi/agent/auth.json`, extracts the live API host from the token's `proxy-ep`, queries `/models`, and prints:
@@ -20,18 +20,14 @@ It reads `~/.pi/agent/auth.json`, extracts the live API host from the token's `p
 - A `MISSING` list — models present on the live API but absent from pi's static `github-copilot` catalog
 - A `DIFFERS` list — models in both, but with a different `contextWindow`
 
-To patch the interactive model picker so each row shows context window + top thinking level (and the bottom hint shows full thinking levels + vision):
+### Optional: Picker patch
 
-```bash
-python scripts/patch-picker.py
-```
-
-Idempotent and writes a `.bak` next to the patched file. Re-run after `pi update --self` since updates overwrite bundled files.
+There is also `scripts/patch-picker.py` which enriches the `/model` picker rows with context window and thinking level badges. This is **purely cosmetic** and does not survive container restarts (it patches files inside the container image). Skip it unless you specifically want the visual enrichment for the current session.
 
 ## Workflow
 
-1. **Run the script** to see what's available.
-2. **Pick a model to add.** Note its `vendor` and `supported_endpoints` — these decide `api` type:
+1. **Run the enumeration** (`node --experimental-strip-types scripts/enumerate.ts`) to see what's available.
+2. **Pick models to add.** Note `vendor` and `supported_endpoints` — these decide `api` type:
    - `vendor: Anthropic` → `api: "anthropic-messages"`
    - `vendor: Google` (Gemini) → `api: "openai-completions"` + `compat: { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false }`
    - GPT-5.x with `/responses` in endpoints → `api: "openai-responses"`
@@ -45,8 +41,20 @@ Idempotent and writes a `.bak` next to the patched file. Re-run after `pi update
      "Copilot-Integration-Id": "vscode-chat"
    }
    ```
-4. **Set `thinkingLevelMap`** from the live API's `supports.reasoning_effort`. Map `off: null` if thinking can't be disabled, and `xhigh: "xhigh"` if the model lists xhigh.
-5. **Save and `/model`** — no restart needed; `models.json` reloads on each picker open.
+4. **Set `thinkingLevelMap`** from the live API's `supports.reasoning_effort`:
+   - Map `off: null` if thinking can't be disabled, and `xhigh: "xhigh"` if the model lists xhigh.
+   - For **single-level models** (e.g. `claude-opus-4.7-xhigh` only supports `xhigh`), map ALL levels to that value so pi doesn't send an unsupported default:
+     ```json
+     "thinkingLevelMap": { "low": "xhigh", "medium": "xhigh", "high": "xhigh", "xhigh": "xhigh" }
+     ```
+5. **Use `modelOverrides`** for existing models that need context window or maxTokens corrections (no need to redefine the full model):
+   ```json
+   "modelOverrides": {
+     "gpt-5.2": { "contextWindow": 400000, "maxTokens": 128000 }
+   }
+   ```
+6. **Save and `/model`** — no restart needed; `models.json` reloads on each picker open.
+7. **Ask the user if they want to test** each new model with `pi --model github-copilot/<id> --no-tools --no-session -p "Say hello"` to confirm they respond.
 
 ## Checklist for each new model entry
 
@@ -62,5 +70,7 @@ Idempotent and writes a `.bak` next to the patched file. Re-run after `pi update
 ## Notes
 
 - The base URL is derived dynamically from the Copilot token (`proxy-ep` field, with `proxy.` rewritten to `api.`). Enterprise tokens resolve to `api.enterprise.githubcopilot.com`; individual tokens to `api.individual.githubcopilot.com`. The OAuth `modifyModels` hook applies the right baseUrl automatically — do NOT hardcode `baseUrl` per model.
-- Internal/preview models can disappear or change shape without notice. If a previously-working model starts 404ing, re-run the script.
+- Internal/preview models can disappear or change shape without notice. If a previously-working model starts 404ing, re-run the enumeration.
 - `model_picker_enabled: false` in the live response means GitHub doesn't surface the model in its own UI, but it's usually still usable via direct API call.
+- `models.json` persists in `~/.pi/agent/` (bind-mounted from host) and survives container restarts. No image rebuild needed.
+- The picker patch (`scripts/patch-picker.py`) is cosmetic only and does NOT survive container restarts — it modifies files inside the ephemeral container filesystem. The models work fine without it.
