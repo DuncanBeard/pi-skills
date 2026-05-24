@@ -32,7 +32,18 @@ There is also `scripts/patch-picker.py` which enriches the `/model` picker rows 
    - `vendor: Google` (Gemini) → `api: "openai-completions"` + `compat: { supportsStore: false, supportsDeveloperRole: false, supportsReasoningEffort: false }`
    - GPT-5.x with `/responses` in endpoints → `api: "openai-responses"`
    - Older GPT (4.x, 4o) → `api: "openai-completions"`
-3. **Add to `~/.pi/agent/models.json`** under the `github-copilot` provider's `models` array. Always include the Copilot impersonation headers, or you'll get `400 missing Editor-Version header`:
+3. **Add to `~/.pi/agent/models.json`** under `providers.github-copilot.models`. The file **must** have a top-level `"providers"` key wrapping all provider objects:
+   ```json
+   {
+     "providers": {
+       "github-copilot": {
+         "models": [ ... ],
+         "modelOverrides": { ... }
+       }
+     }
+   }
+   ```
+   Always include the Copilot impersonation headers on each model, or you'll get `400 missing Editor-Version header`:
    ```json
    "headers": {
      "User-Agent": "GitHubCopilotChat/0.35.0",
@@ -47,7 +58,7 @@ There is also `scripts/patch-picker.py` which enriches the `/model` picker rows 
      ```json
      "thinkingLevelMap": { "low": "xhigh", "medium": "xhigh", "high": "xhigh", "xhigh": "xhigh" }
      ```
-5. **Use `modelOverrides`** for existing models that need context window or maxTokens corrections (no need to redefine the full model):
+5. **Use `modelOverrides`** (inside `providers.github-copilot`) for existing models that need context window or maxTokens corrections (no need to redefine the full model):
    ```json
    "modelOverrides": {
      "gpt-5.2": { "contextWindow": 400000, "maxTokens": 128000 }
