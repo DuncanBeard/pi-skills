@@ -40,7 +40,7 @@ Launch: `wsl -d NixOS`
 
 ### 2. Bootstrap crates.io access
 
-**Critical:** Corporate networks and crates.io both block requests without a User-Agent header (403). Run this before any `nixos-rebuild`:
+**Critical:** crates.io blocks requests without a User-Agent header (403). Run this before any `nixos-rebuild` if you hit crate download failures:
 
 ```bash
 bash /path/to/this/skill/scripts/bootstrap-crates.sh
@@ -219,6 +219,16 @@ rm -f ~/.hermes/.managed
 
 **Fix:** Run `scripts/bootstrap-crates.sh` before rebuild.
 
+### VS Code Remote can't connect ("Could not start dynamically linked executable")
+
+**Cause:** NixOS doesn't have standard FHS paths (`/lib64/ld-linux-x86-64.so.2`). VS Code Server's bundled `node` binary is dynamically linked and can't find glibc.
+
+**Fix:** Add to configuration.nix:
+```nix
+programs.nix-ld.enable = true;
+```
+This also fixes JetBrains, GitHub CLI extensions, and any other non-Nix binaries.
+
 **Permanent fix:** Set up a Cachix binary cache and push your built closure:
 ```bash
 nix build /etc/nixos#nixosConfigurations.nixos.config.system.build.toplevel
@@ -268,3 +278,4 @@ services.hermes-agent = {
 - [ ] Migrate to agenix for secrets management
 - [ ] Add `extraPythonPackages` for optional tools (piper-tts, etc.)
 - [ ] File upstream NixOS-WSL issue for User-Agent in crate fetching
+- [x] nix-ld for VS Code Remote + non-Nix binaries
